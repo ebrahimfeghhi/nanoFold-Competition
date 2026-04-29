@@ -1,3 +1,26 @@
+[project]
+name = "nanofold"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.1",
+    "numpy>=1.24",
+    "tqdm>=4.66",
+    "pyyaml>=6.0",
+    "gemmi>=0.6",
+    "biopython>=1.81",
+    "awscli>=1.44.87",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "pyright>=1.1",
+    "types-PyYAML>=6.0",
+]
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"
