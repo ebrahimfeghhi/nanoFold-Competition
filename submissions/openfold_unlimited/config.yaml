@@ -1,0 +1,50 @@
+run_name: openfold_unlimited
+track: unlimited
+seed: 42
+
+submission:
+  path: submission.py
+
+data:
+  processed_features_dir: data/processed_features
+  processed_labels_dir: data/processed_labels
+  train_manifest: data/manifests/train.txt
+  val_manifest: data/manifests/val.txt
+  crop_size: 256
+  msa_depth: 512
+  batch_size: 1
+  num_workers: 2
+  train_crop_mode: random
+  val_crop_mode: center
+  train_msa_sample_mode: random
+  val_msa_sample_mode: top
+
+model:
+  msa_depth: 128       # cluster MSA depth fed to the main stack
+  extra_msa_depth: 512 # extra MSA depth (no clustering)
+  n_recycles: 3        # recycling iterations (4 total forward passes)
+
+optim:
+  lr: 1.0e-3
+  weight_decay: 0.0
+  beta1: 0.9
+  beta2: 0.999
+  eps: 1.0e-6
+  grad_clip_norm: 0.1
+  lr_decay_factor: 0.95
+
+train:
+  max_steps: 6000
+  log_every: 10
+  eval_every: 500
+  save_every: 500
+  grad_accum_steps: 128
+  # finetune_start_step ~ 6000 * 10M/11.5M ≈ 5217
+  finetune_start_step: 5217
+  finetune_ramp_steps: 500
+  finetune_lr_scale: 0.1
+  # warmup_steps ~ finetune_start * 128k/10M ≈ 67
+  warmup_steps: 67
+  # lr_decay_step ~ finetune_start * 6.4M/10M ≈ 3339
+  lr_decay_step: 3339
+  amp: true
