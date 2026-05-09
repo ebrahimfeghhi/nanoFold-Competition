@@ -350,6 +350,25 @@ def _build_openfold_batch(
         "template_pseudo_beta_mask": torch.zeros(B, 0, L, device=device),
     }
 
+    # OpenFold calls build_extra_msa_feat() internally, so it needs the raw
+    # components rather than the pre-built extra_msa_feat tensor.
+    extra_msa_feat = msa_feats.pop("extra_msa_feat")   # [B, N_extra, L, 25]
+    extra_msa_mask = msa_feats.pop("extra_msa_mask")   # [B, N_extra, L]
+
+    # Guard: OpenFold's attention stack breaks with 0 extra sequences.
+    # Pad to at least 1 all-gap row so the stack is always well-defined.
+    if extra_msa_feat.shape[1] == 0:
+        extra_msa_feat = torch.zeros(B, 1, L, 25, device=device)
+        extra_msa_feat[..., 21] = 1.0          # one-hot GAP_ID=21
+        extra_msa_mask = torch.zeros(B, 1, L, device=device)
+
+    extra_msa_keys = {
+        "extra_msa":            extra_msa_feat[..., :23].argmax(-1).long(),
+        "extra_has_deletion":   extra_msa_feat[..., 23],
+        "extra_deletion_value": extra_msa_feat[..., 24],
+        "extra_msa_mask":       extra_msa_mask,
+    }
+
     out: Dict[str, torch.Tensor] = {
         "aatype": aatype,
         "target_feat": target_feat,
@@ -362,6 +381,7 @@ def _build_openfold_batch(
         # use_clamped_fape=0 → unclamped FAPE during initial training
         "use_clamped_fape": torch.zeros(B, device=device),
         **msa_feats,
+        **extra_msa_keys,
         **templates,
     }
 
