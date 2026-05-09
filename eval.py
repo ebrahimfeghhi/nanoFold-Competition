@@ -31,6 +31,7 @@ from nanofold.competition_policy import (
 from nanofold.data import ProcessedNPZDataset, collate_batch
 from nanofold.dataset_integrity import verify_split_against_fingerprint
 from nanofold.metrics import FOLDSCORE_COMPONENT_NAMES, foldscore_components
+from nanofold.residue_constants import CA_ATOM14_SLOT
 from nanofold.submission_runtime import load_submission_hooks, run_submission_batch
 from nanofold.utils import (
     count_parameters,
@@ -365,7 +366,34 @@ def _score_chain(
         atom14_mask=labels["atom14_mask"],
         aatype=features["aatype"],
     )
-    return {name: float(value.detach().cpu()) for name, value in comps.items()}
+    metrics = {name: float(value.detach().cpu()) for name, value in comps.items()}
+    ca_mask = labels["ca_mask"].to(dtype=torch.bool)
+    rmsd_ca = _masked_kabsch_rmsd(
+        pred_atom14[:, CA_ATOM14_SLOT, :],
+        labels["ca_coords"],
+        ca_mask,
+    )
+    metrics["rmsd_ca"] = float(rmsd_ca.detach().cpu())
+    return metrics
+
+
+def _masked_kabsch_rmsd(pred: torch.Tensor, true: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    active = mask.to(dtype=torch.bool)
+    if int(active.sum().item()) < 3:
+        return torch.tensor(float("nan"), device=pred.device, dtype=pred.dtype)
+    pred_active = pred[active]
+    true_active = true[active].to(device=pred.device, dtype=pred.dtype)
+    pred_centered = pred_active - pred_active.mean(dim=0, keepdim=True)
+    true_centered = true_active - true_active.mean(dim=0, keepdim=True)
+    covariance = pred_centered.transpose(0, 1) @ true_centered
+    u, _, vh = torch.linalg.svd(covariance, full_matrices=False)
+    correction = torch.ones(3, device=pred.device, dtype=pred.dtype)
+    if torch.det(u @ vh) < 0:
+        correction[-1] = -1.0
+    rotation = u @ torch.diag(correction) @ vh
+    aligned = pred_centered @ rotation
+    squared_error = (aligned - true_centered).square().sum(dim=-1)
+    return torch.sqrt(squared_error.mean().clamp_min(0.0))
 
 
 def _scalar_output_metrics(out: Dict[str, Any]) -> Dict[str, torch.Tensor]:
@@ -655,6 +683,12 @@ def main() -> None:
             component_means[f"mean_{component_name}"] = (
                 float(sum(values) / len(values)) if values else float("nan")
             )
+        rmsd_values = [
+            float(item["rmsd_ca"])
+            for item in per_chain_rows
+            if "rmsd_ca" in item and not np.isnan(float(item["rmsd_ca"]))
+        ]
+        component_means["mean_rmsd_ca"] = float(sum(rmsd_values) / len(rmsd_values)) if rmsd_values else float("nan")
         mean_lddt = component_means["mean_lddt_ca"]
         mean_foldscore = component_means["mean_foldscore"]
         scalar_means = {

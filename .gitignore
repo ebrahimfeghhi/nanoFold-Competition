@@ -31,8 +31,11 @@ __pycache__/
 /neurips_paper/runpod_sync/
 /secrets/
 /data/openproteinset/*
+/data/openproteinset_standard_cluster_fair/
 /data/processed_features/
 /data/processed_labels/
+/data/processed_features_standard_cluster_fair/
+/data/processed_labels_standard_cluster_fair/
 /data/hidden_processed_features/
 /data/hidden_processed_labels/
 /data/metadata_sources/
