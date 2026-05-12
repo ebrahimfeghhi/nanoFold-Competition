@@ -43,9 +43,7 @@ That string **folds** into a specific 3D shape, and the shape determines what th
 
 The task: given the sequence, predict the 3D coordinates of every atom.
 
-> **[Figure: AF2 paper Figure 1 — sequence → structure]**
-
-Why hard? ~3¹⁰⁰ possible conformations for a 100-residue protein. Physics simulation is intractable. AF2's answer: learn from evolution.
+Why is this hard? ~3¹⁰⁰ possible conformations for a 100-residue protein. 
 
 ---
 
@@ -63,9 +61,9 @@ Sp 4:      R  G  V  L  D  S  G  W  P  K
 Sp 5:      K  A  L  L  E  T  G  W  Q  R
 ```
 
-Positions 1 & 5 co-vary: K↔E, R↔D. Both preserve a positive–negative charge pair → salt bridge → physical contact.
+Positions 1 & 5 co-vary: K↔E, R↔D. 
 
-**If two columns co-vary across species, those residues probably touch in 3D.**
+**If two columns co-vary across species, those residues are likely close in 3D space**
 
 ---
 
@@ -90,22 +88,22 @@ Positions 1 & 5 co-vary: K↔E, R↔D. Both preserve a positive–negative charg
 Everything in AF2 flows through two parallel tensors updated by the Evoformer:
 
 **`m` — MSA representation** `(N_seq, N_res, c_m)`
-One row per MSA sequence, one column per residue. Tracks evolutionary signal: how does each position vary across organisms?
+One row per MSA sequence, one column per residue. 
 
 **`z` — Pair representation** `(N_res, N_res, c_z)`
-One cell per *pair* of residue positions. Encodes the model's current belief about: are residues i and j close? Contacting? What angle?
+One cell per *pair* of residue positions. Encodes the model's current belief regarding the relationship between pairs of residues.
 
 **Two cross-stream couplings only:**
 - Pair → MSA: `z` biases row-attention weights in `m`
 - MSA → Pair: outer product mean of `m` writes into `z`
-
-Everything else is a self-update. The Structure Module reads `z` (and a slice of `m`) to place atoms.
+ 
+Structure Module reads `z` (and a slice of `m`) to place atoms.
 
 ---
 
 ## Slide 6: Data Pipeline — Cropping to a Fixed Window
 
-Proteins can be thousands of residues long but GPU memory is fixed — AF2 trains on random 256-residue crops. Every field in the batch (sequence, MSA, templates, supervision labels) must be sliced to the same window, or the supervision won't align with the inputs.
+Proteins can be thousands of residues long but GPU memory is fixed — AF2 trains on random 256-residue crops.
 
 <span class="file">minalphafold/data.py · crop_example() ~line 340</span>
 
@@ -119,7 +117,6 @@ cropped["template_aatype"]  = example["template_aatype"][:, residue_slice]
 cropped["atom14_positions"] = example["atom14_positions"][residue_slice]  # supervision
 ```
 
-Random crop start during training; centered at inference.
 
 ---
 

@@ -9,11 +9,14 @@ Checkpointing and logging are rank-0 only. Validation runs on rank-0 only.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import shutil
 import math
 import os
 import sys
 import time
+from datetime import timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, Iterable
@@ -89,18 +92,12 @@ def parse_args() -> argparse.Namespace:
 
 def init_distributed() -> tuple[int, int, int]:
     """Initialize process group. Returns (rank, local_rank, world_size)."""
-    dist.init_process_group(backend="nccl")
+    dist.init_process_group(backend="nccl", timeout=timedelta(hours=2))
     rank = dist.get_rank()
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
     world_size = dist.get_world_size()
     torch.cuda.set_device(local_rank)
     return rank, local_rank, world_size
-
-
-def all_reduce_mean(tensor: torch.Tensor) -> float:
-    t = tensor.clone()
-    dist.all_reduce(t, op=dist.ReduceOp.SUM)
-    return float(t.item()) / dist.get_world_size()
 
 
 # ---------------------------------------------------------------------------
@@ -527,6 +524,11 @@ def main() -> None:
     grad_accum_steps = int(tcfg.get("grad_accum_steps", 1))
     grad_clip = float(cfg.get("optim", {}).get("grad_clip_norm", 0.0))
     eval_foldscore_components = bool(tcfg.get("eval_foldscore_components", False))
+    finetune_start_step = int(tcfg.get("finetune_start_step", max_steps + 1))
+    finetune_crop_size = int(tcfg.get("finetune_crop_size", cfg["data"]["crop_size"]))
+    finetune_data_msa_depth = int(tcfg.get("finetune_data_msa_depth", cfg["data"]["msa_depth"]))
+    finetune_model_msa_depth = int(tcfg.get("finetune_model_msa_depth", cfg["model"].get("msa_depth", 128)))
+    finetune_extra_msa_depth = int(tcfg.get("finetune_extra_msa_depth", cfg["model"].get("extra_msa_depth", 1024)))
 
     batch_size = int(cfg["data"]["batch_size"])
     crop_size = int(cfg["data"]["crop_size"])
@@ -615,9 +617,9 @@ def main() -> None:
     def _save_checkpoint(*, step_value: int) -> None:
         if not is_rank_zero:
             return
-        ckpt = _checkpoint_payload(step_value=step_value)
-        torch.save(ckpt, paths.ckpt_dir / f"ckpt_step_{step_value}.pt")
-        torch.save(ckpt, paths.ckpt_dir / "ckpt_last.pt")
+        step_path = paths.ckpt_dir / f"ckpt_step_{step_value}.pt"
+        torch.save(_checkpoint_payload(step_value=step_value), step_path)
+        shutil.copy2(step_path, paths.ckpt_dir / "ckpt_last.pt")
 
     if args.resume:
         resume_path = Path(args.resume)
@@ -694,6 +696,16 @@ def main() -> None:
     step_start = time.perf_counter()
     run_start = time.perf_counter()
 
+    # If resuming into the finetune phase, apply data/model config changes immediately.
+    entered_finetune = step >= finetune_start_step
+    if entered_finetune:
+        cfg["data"]["crop_size"] = finetune_crop_size
+        cfg["data"]["msa_depth"] = finetune_data_msa_depth
+        cfg["model"]["msa_depth"] = finetune_model_msa_depth
+        cfg["model"]["extra_msa_depth"] = finetune_extra_msa_depth
+        train_loader = make_loader(cfg, "train", device=device, sampler=train_sampler, generator_seed=seed)
+        train_iter = iter(train_loader)
+
     def run_eval() -> Dict[str, float]:
         """Runs validation on rank 0 only. Other ranks do nothing."""
         assert is_rank_zero and val_loader is not None
@@ -731,6 +743,17 @@ def main() -> None:
                                        foldscore_metric_values=foldscore_metric_values if eval_foldscore_components else None)
 
     while step < max_steps:
+        if not entered_finetune and step >= finetune_start_step:
+            entered_finetune = True
+            cfg["data"]["crop_size"] = finetune_crop_size
+            cfg["data"]["msa_depth"] = finetune_data_msa_depth
+            cfg["model"]["msa_depth"] = finetune_model_msa_depth
+            cfg["model"]["extra_msa_depth"] = finetune_extra_msa_depth
+            train_loader = make_loader(cfg, "train", device=device, sampler=train_sampler, generator_seed=seed)
+            train_sampler.set_epoch(epoch)
+            train_iter = iter(train_loader)
+            log_line(f"[finetune] step {step}: crop {crop_size}→{finetune_crop_size}, data_msa {finetune_data_msa_depth}, model_msa {finetune_model_msa_depth}, extra_msa {finetune_extra_msa_depth}")
+
         optimizer_zero_grad(opt)
         running_loss = 0.0
         scalar_metric_sums: Dict[str, float] = {}
@@ -753,12 +776,12 @@ def main() -> None:
             nonpad_residues_this_step += int(batch["residue_mask"].sum().item())
 
             # Only sync gradients on the last accumulation step
-            sync_ctx = model.no_sync() if accum_idx < grad_accum_steps - 1 else torch.contextlib.nullcontext() if hasattr(torch, "contextlib") else __import__("contextlib").nullcontext()
+            sync_ctx = model.no_sync() if accum_idx < grad_accum_steps - 1 else contextlib.nullcontext()
 
-            with make_autocast_ctx(device, use_bf16):
-                runtime_cfg = _cfg_with_runtime(cfg, step=step, cumulative_samples_seen=cumulative_samples_seen,
-                                                max_steps=max_steps, sample_budget=sample_budget)
-                with sync_ctx:
+            with sync_ctx:
+                with make_autocast_ctx(device, use_bf16):
+                    runtime_cfg = _cfg_with_runtime(cfg, step=step, cumulative_samples_seen=cumulative_samples_seen,
+                                                    max_steps=max_steps, sample_budget=sample_budget)
                     out = run_submission_batch(hooks, model=model, batch=batch, cfg=runtime_cfg, training=True)
                 raw_loss = out["loss"]
                 for metric_name, metric_value in _scalar_output_metrics(out).items():
@@ -770,8 +793,7 @@ def main() -> None:
                     else:
                         raise RuntimeError("Submission returned non-differentiable loss with no pred_atom14.")
                 loss = raw_loss / grad_accum_steps
-
-            loss.backward()
+                loss.backward()
             running_loss += float(raw_loss.detach())
 
         # All-reduce loss for logging
@@ -784,7 +806,9 @@ def main() -> None:
         else:
             grad_norm = _grad_norm(raw_model)
 
-        if not math.isfinite(grad_norm):
+        abort = torch.tensor(0 if math.isfinite(grad_norm) else 1, device=device)
+        dist.all_reduce(abort, op=dist.ReduceOp.MAX)
+        if abort.item():
             raise RuntimeError(f"Non-finite gradient norm at step {step}.")
 
         opt.step()
@@ -843,6 +867,12 @@ def main() -> None:
                     f"elapsed={_format_duration(run_elapsed_seconds)} eta={_format_duration(eta)}"
                 )
 
+        if step % save_every == 0 or step == max_steps:
+            dist.barrier()
+            _save_checkpoint(step_value=step)
+            log_line(f"[checkpoint] step {step}: wrote {paths.ckpt_dir / 'ckpt_last.pt'}")
+            dist.barrier()  # wait for rank-0 checkpoint write before all ranks advance
+
         if step % eval_every == 0 or step == max_steps:
             log_line(f"[eval] step {step}: starting public validation")
             if is_rank_zero:
@@ -866,13 +896,8 @@ def main() -> None:
                 )
             dist.barrier()
 
-        if step % save_every == 0 or step == max_steps:
-            dist.barrier()
-            _save_checkpoint(step_value=step)
-            log_line(f"[checkpoint] step {step}: wrote {paths.ckpt_dir / 'ckpt_last.pt'}")
-
+    pbar.close()
     if is_rank_zero:
-        pbar.close()
         metrics["cumulative_samples_seen"] = cumulative_samples_seen
         metrics["cumulative_cropped_residues_seen"] = cumulative_cropped_residues_seen
         metrics["cumulative_nonpad_residues_seen"] = cumulative_nonpad_residues_seen
