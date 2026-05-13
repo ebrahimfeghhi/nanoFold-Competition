@@ -14,7 +14,7 @@ import torch.nn.functional as F
 # Path / environment setup
 # ---------------------------------------------------------------------------
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OPENFOLD_ROOT = Path("/home/ebrahim/openfold")
+OPENFOLD_ROOT = REPO_ROOT / "third_party" / "openfold"
 MINALPHAFOLD2_ROOT = REPO_ROOT / "third_party" / "minAlphaFold2"
 
 for _p in [str(OPENFOLD_ROOT), str(MINALPHAFOLD2_ROOT)]:
@@ -125,6 +125,7 @@ def build_model(cfg: Dict[str, Any]) -> torch.nn.Module:
     model_cfg = cfg.get("model", {})
     oc = _of_model_config("initial_training", train=True)
     oc.model.template.enabled = False  # no template data available
+    oc.globals.use_flash = True
 
     model = AlphaFold(oc)
 

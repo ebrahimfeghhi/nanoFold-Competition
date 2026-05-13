@@ -1,3 +1,6 @@
 [submodule "third_party/minAlphaFold2"]
 	path = third_party/minAlphaFold2
 	url = https://github.com/ChrisHayduk/minAlphaFold2.git
+[submodule "third_party/openfold"]
+	path = third_party/openfold
+	url = https://github.com/aqlaboratory/openfold.git
