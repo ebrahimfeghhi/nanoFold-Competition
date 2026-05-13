@@ -85,10 +85,18 @@ The first run crashed at step 500 during validation with an NCCL `ALLREDUCE` tim
 
 **Data lost**: Step 0 was the only checkpoint; the ~6 hours of training to step 500 was lost.
 
+## Training Curves
+
+![Training plots](openfold_unlimited_training_plots.png)
+
 ## Val Metrics
 
-| Step | val_loss | val_lddt_ca | val_rmsd_ca |
-|---|---|---|---|
-| — | — | — | — |
-
-*(to be filled as training progresses)*
+| Step | val_loss | val_foldscore | val_lddt_ca | val_rmsd_ca |
+|---|---|---|---|---|
+| 500  | 32.738 | 0.235 | 0.134 | 15.79 |
+| 1000 | 30.505 | 0.278 | 0.243 | 13.02 |
+| 1500 | 29.554 | 0.291 | 0.279 | 12.80 |
+| 2000 | 29.280 | 0.308 | 0.334 | 12.66 |
+| 2500 | 28.745 | 0.326 | 0.339 | 11.90 |
+| 3000 | 27.180 | 0.414 | 0.441 | 8.82  |
+| 3500 | 25.640 | 0.519 | 0.571 | 7.44  |
