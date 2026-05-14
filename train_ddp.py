@@ -580,7 +580,8 @@ def main() -> None:
     cumulative_nonpad_residues_seen = 0
 
     def _raw_model_state_dict():
-        return raw_model.state_dict()
+        m = raw_model._orig_mod if hasattr(raw_model, "_orig_mod") else raw_model
+        return m.state_dict()
 
     def _checkpoint_payload(*, step_value: int) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -636,7 +637,8 @@ def main() -> None:
         )
         if mismatches and not args.allow_resume_mismatch:
             raise ValueError("Resume checkpoint metadata mismatch:\n" + "\n".join(f"- {m}" for m in mismatches))
-        raw_model.load_state_dict(ckpt["model"], strict=True)
+        load_target = raw_model._orig_mod if hasattr(raw_model, "_orig_mod") else raw_model
+        load_target.load_state_dict(ckpt["model"], strict=True)
         opt.load_state_dict(ckpt["opt"])
         if scheduler is not None and "scheduler" in ckpt and callable(getattr(scheduler, "load_state_dict", None)):
             scheduler.load_state_dict(ckpt["scheduler"])

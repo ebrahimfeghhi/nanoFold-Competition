@@ -1,4 +1,4 @@
-run_name: openfold_unlimited
+run_name: compile_test
 track: unlimited
 seed: 42
 
@@ -20,9 +20,9 @@ data:
   val_msa_sample_mode: top
 
 model:
-  msa_depth: 128       # cluster MSA depth fed to the main stack
-  extra_msa_depth: 1024 # extra MSA depth (no clustering)
-  n_recycles: 3        # recycling iterations (4 total forward passes)
+  msa_depth: 128
+  extra_msa_depth: 1024
+  n_recycles: 3
 
 optim:
   lr: 1.0e-3
@@ -34,22 +34,19 @@ optim:
   lr_decay_factor: 0.95
 
 train:
-  max_steps: 6000
-  log_every: 10
-  eval_every: 500
-  save_every: 500
-  grad_accum_steps: 32
-  # finetune_start_step ~ 6000 * 10M/11.5M ≈ 5217
-  finetune_start_step: 5217
+  max_steps: 8
+  log_every: 1
+  eval_every: 999
+  save_every: 999
+  grad_accum_steps: 16
+  finetune_start_step: 99999
   finetune_ramp_steps: 500
   finetune_lr_scale: 0.5
   finetune_crop_size: 384
   finetune_data_msa_depth: 2048
   finetune_model_msa_depth: 512
   finetune_extra_msa_depth: 5120
-  # warmup_steps ~ finetune_start * 128k/10M ≈ 67
   warmup_steps: 67
-  # lr_decay_step ~ finetune_start * 7M/10M ≈ 3652
   lr_decay_step: 3652
   amp: true
-  eval_foldscore_components: true
+  eval_foldscore_components: false
