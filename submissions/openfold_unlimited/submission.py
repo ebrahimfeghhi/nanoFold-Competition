@@ -123,6 +123,9 @@ def _runtime_step(cfg: Dict[str, Any]) -> int:
 
 def build_model(cfg: Dict[str, Any]) -> torch.nn.Module:
     model_cfg = cfg.get("model", {})
+
+    if "blocks_per_ckpt" in model_cfg:
+        oc.globals.blocks_per_ckpt = model_cfg["blocks_per_ckpt"]  # may be None
     oc = _of_model_config("initial_training", train=True)
     oc.model.template.enabled = False  # no template data available
     oc.globals.use_flash = True
