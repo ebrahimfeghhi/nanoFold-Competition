@@ -1,7 +1,15 @@
-"""OpenFold AlphaFold2 submission for the nanoFold unlimited track."""
+"""OpenFold AlphaFold2 submission for the nanoFold unlimited track.
+
+Prerequisites (one-time, per machine):
+- `git submodule update --init --recursive` to fetch third_party/openfold.
+- A CUDA toolkit matching the PyTorch CUDA version (set `CUDA_HOME`, put
+  `nvcc` on PATH).
+- `bash scripts/setup_openfold.sh` to compile the OpenFold attention kernel
+  (`attn_core_inplace_cuda`).
+- `wget` `stereo_chemical_props.txt` into `third_party/openfold/openfold/resources/`.
+"""
 from __future__ import annotations
 
-import importlib.util  # ensure submodule is importable before openfold
 import os
 import sys
 from pathlib import Path
@@ -21,7 +29,8 @@ for _p in [str(OPENFOLD_ROOT), str(MINALPHAFOLD2_ROOT)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-# attn_core_inplace_cuda CUDA kernel requires PyTorch's lib dir on LD_LIBRARY_PATH
+# OpenFold's compiled CUDA extension (attn_core_inplace_cuda) links against
+# torch's bundled shared libraries; make sure they're on the loader path.
 _torch_lib = str(Path(torch.__file__).parent / "lib")
 _ld = os.environ.get("LD_LIBRARY_PATH", "")
 if _torch_lib not in _ld:
@@ -124,11 +133,12 @@ def _runtime_step(cfg: Dict[str, Any]) -> int:
 def build_model(cfg: Dict[str, Any]) -> torch.nn.Module:
     model_cfg = cfg.get("model", {})
 
-    if "blocks_per_ckpt" in model_cfg:
-        oc.globals.blocks_per_ckpt = model_cfg["blocks_per_ckpt"]  # may be None
     oc = _of_model_config("initial_training", train=True)
     oc.model.template.enabled = False  # no template data available
     oc.globals.use_flash = True
+    if "blocks_per_ckpt" in model_cfg:
+        # None disables activation checkpointing; integer K checkpoints every Kth block.
+        oc.globals.blocks_per_ckpt = model_cfg["blocks_per_ckpt"]
 
     model = AlphaFold(oc)
 

@@ -10,6 +10,12 @@ dependencies = [
     "gemmi>=0.6",
     "biopython>=1.81",
     "awscli>=1.44.87",
+    "ml-collections>=1.1.0",
+    "dm-tree>=0.1.10",
+    "einops>=0.8.2",
+    "pytorch-lightning>=2.6.1",
+    "modelcif>=1.7",
+    "scipy>=1.17.1",
 ]
 
 [project.optional-dependencies]

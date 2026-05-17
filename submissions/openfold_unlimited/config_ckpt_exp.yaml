@@ -35,7 +35,7 @@ optim:
   lr_decay_factor: 0.95
 
 train:
-  max_steps: 10
+  max_steps: 100
   log_every: 1
   eval_every: 999
   save_every: 999
@@ -47,7 +47,7 @@ train:
   finetune_data_msa_depth: 2048
   finetune_model_msa_depth: 512
   finetune_extra_msa_depth: 5120
-  warmup_steps: 67
+  warmup_steps: 30
   lr_decay_step: 3652
   amp: true
   eval_foldscore_components: false
