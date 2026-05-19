@@ -136,7 +136,7 @@ def build_model(cfg: Dict[str, Any]) -> torch.nn.Module:
 
     oc = _of_model_config("initial_training", train=True)
     oc.model.template.enabled = False  # no template data available
-    oc.globals.use_flash = False
+    oc.globals.use_flash = True
     if "blocks_per_ckpt" in model_cfg:
         # None disables activation checkpointing; integer K checkpoints every Kth block.
         oc.globals.blocks_per_ckpt = model_cfg["blocks_per_ckpt"]
