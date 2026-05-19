@@ -1,0 +1,55 @@
+run_name: openfold_research_large
+track: research_large
+seed: 0
+
+submission:
+  path: submission.py
+
+data:
+  processed_features_dir: data/processed_features
+  processed_labels_dir: data/processed_labels
+  train_manifest: data/manifests/train.txt
+  val_manifest: data/manifests/val.txt
+  crop_size: 256
+  msa_depth: 192          # research_large track requirement
+  batch_size: 1
+  num_workers: 8
+  train_crop_mode: random
+  val_crop_mode: center
+  train_msa_sample_mode: random
+  val_msa_sample_mode: top
+
+model:
+  msa_depth: 128
+  extra_msa_depth: 1024
+  n_recycles: 3
+
+optim:
+  lr: 1.0e-3
+  weight_decay: 0.0
+  beta1: 0.9
+  beta2: 0.99
+  eps: 1.0e-6
+  grad_clip_norm: 0.1
+  lr_decay_factor: 0.95
+
+train:
+  # 100k sample budget / 128 effective batch (4 GPUs x 1 x 32 grad_accum) = 781 steps
+  max_steps: 781
+  grad_accum_steps: 32
+  log_every: 10
+  eval_every: 261        # evals at steps 261, 522, 781 (≈1/3, 2/3, end)
+  save_every: 261
+  eval_foldscore_components: true
+  # Same warmup as unlimited run (calibrated for eff. batch=128)
+  warmup_steps: 67
+  # lr_decay_step and finetune_start_step both beyond max_steps — no decay, no finetuning
+  lr_decay_step: 99999
+  finetune_start_step: 99999
+  finetune_ramp_steps: 0
+  finetune_lr_scale: 0.5
+  finetune_crop_size: 384
+  finetune_data_msa_depth: 2048
+  finetune_model_msa_depth: 512
+  finetune_extra_msa_depth: 5120
+  amp: true

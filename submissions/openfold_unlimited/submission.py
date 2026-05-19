@@ -11,6 +11,7 @@ Prerequisites (one-time, per machine):
 from __future__ import annotations
 
 import os
+import random
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
@@ -135,7 +136,7 @@ def build_model(cfg: Dict[str, Any]) -> torch.nn.Module:
 
     oc = _of_model_config("initial_training", train=True)
     oc.model.template.enabled = False  # no template data available
-    oc.globals.use_flash = True
+    oc.globals.use_flash = False
     if "blocks_per_ckpt" in model_cfg:
         # None disables activation checkpointing; integer K checkpoints every Kth block.
         oc.globals.blocks_per_ckpt = model_cfg["blocks_per_ckpt"]
@@ -344,7 +345,9 @@ def _build_openfold_batch(
     B, L = aatype.shape
     model_cfg = cfg.get("model", {})
     n_recycles = int(model_cfg.get("n_recycles", 3))
-    n_iters = n_recycles + 1
+    # Uniform recycling: sample N' ~ Uniform(1, N_cycle) during training (AF2 Suppl. Alg. 31).
+    # At eval/inference always use the full N_cycle iterations.
+    n_iters = random.randint(1, n_recycles + 1) if training else n_recycles + 1
 
     # ---- Sequence / target features ----
     has_break = torch.zeros(B, L, 1, device=device)
@@ -383,6 +386,10 @@ def _build_openfold_batch(
         "extra_msa_mask":       extra_msa_mask,
     }
 
+    # atom14/37 index mappings required by AlphaFold.forward() at all times
+    _atom_masks: Dict[str, torch.Tensor] = {"aatype": aatype}
+    make_atom14_masks(_atom_masks)
+
     out: Dict[str, torch.Tensor] = {
         "aatype": aatype,
         "target_feat": target_feat,
@@ -397,6 +404,10 @@ def _build_openfold_batch(
         **msa_feats,
         **extra_msa_keys,
         **templates,
+        "atom14_atom_exists": _atom_masks["atom14_atom_exists"],
+        "residx_atom14_to_atom37": _atom_masks["residx_atom14_to_atom37"],
+        "residx_atom37_to_atom14": _atom_masks["residx_atom37_to_atom14"],
+        "atom37_atom_exists": _atom_masks["atom37_atom_exists"],
     }
 
     # ---- Supervision features (atom14/37, frames, chi angles) ----
